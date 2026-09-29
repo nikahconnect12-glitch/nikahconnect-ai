@@ -9,28 +9,39 @@ export async function POST(req) {
     const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
     const geminiKey = process.env.GEMINI_API_KEY;
 
-    if (!supabaseUrl || !supabaseAnonKey) {
-      return Response.json({ error: 'Supabase credentials are missing' }, { status: 500 });
+    if (!supabaseUrl || !supabaseAnonKey || !geminiKey) {
+      return Response.json({ error: 'Server environment configuration missing.' }, { status: 500 });
     }
 
     const supabase = createClient(supabaseUrl, supabaseAnonKey);
     const genAI = new GoogleGenerativeAI(geminiKey);
 
-    const { inputProfile } = await req.json();
+    const body = await req.json();
+    const inputProfile = body.inputProfile;
 
     if (!inputProfile) {
       return Response.json({ error: 'Profile text is required' }, { status: 400 });
     }
 
-    const { data: databaseProfiles, error } = await supabase
+    // 1. Fetch database profiles from Supabase
+    const { data: databaseProfiles, error: dbError } = await supabase
       .from('profiles db')
       .select('*');
 
-    if (error) {
-      return Response.json({ error: error.message }, { status: 500 });
+    if (dbError) {
+      console.error('Database Error:', dbError);
+      return Response.json({ error: `Database Error: ${dbError.message}` }, { status: 500 });
     }
 
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+    if (!databaseProfiles || databaseProfiles.length === 0) {
+      return Response.json({ error: 'No profiles found in database.' }, { status: 404 });
+    }
+
+    // 2. Call Gemini API
+    const model = genAI.getGenerativeModel({ 
+      model: 'gemini-2.5-flash',
+      generationConfig: { responseMimeType: 'application/json' }
+    });
 
     const prompt = `
     You are an expert AI Matchmaking Engine for 'Nikah Connect' (https://www.nikahconnect.pro).
@@ -134,13 +145,13 @@ export async function POST(req) {
 
     const result = await model.generateContent(prompt);
     let responseText = result.response.text();
-    
-    responseText = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
+
+    responseText = responseText.replace(/```json/gi, '').replace(/```/g, '').trim();
     const matches = JSON.parse(responseText);
 
     return Response.json({ matches });
   } catch (err) {
-    console.error(err);
-    return Response.json({ error: 'Failed to process AI matching' }, { status: 500 });
+    console.error('API Error:', err);
+    return Response.json({ error: err.message || 'Failed to process AI matching' }, { status: 500 });
   }
 }
