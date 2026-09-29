@@ -1,15 +1,21 @@
 import { createClient } from '@supabase/supabase-js';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-);
-
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+export const dynamic = 'force-dynamic';
 
 export async function POST(req) {
   try {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    const geminiKey = process.env.GEMINI_API_KEY;
+
+    if (!supabaseUrl || !supabaseAnonKey) {
+      return Response.json({ error: 'Supabase credentials are missing' }, { status: 500 });
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseAnonKey);
+    const genAI = new GoogleGenerativeAI(geminiKey);
+
     const { inputProfile } = await req.json();
 
     if (!inputProfile) {
